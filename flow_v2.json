@@ -1,0 +1,392 @@
+[
+    {
+        "id": "94965d902f34224f",
+        "type": "tab",
+        "label": "Victron → Shelly (optimized)",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "42b4be6c5ffe7a49",
+        "type": "victron-input-custom",
+        "z": "94965d902f34224f",
+        "service": "com.victronenergy.battery/100",
+        "path": "/Dc/0/Power",
+        "serviceObj": {
+            "service": "com.victronenergy.battery/100",
+            "name": "ESS Virtual Battery (100)"
+        },
+        "pathObj": {
+            "path": "/Dc/0/Power",
+            "name": "/Dc/0/Power",
+            "type": "number",
+            "value": -4
+        },
+        "name": "",
+        "onlyChanges": true,
+        "rateLimit": "0",
+        "outputs": 2,
+        "conditionalMode": true,
+        "condition1Operator": ">=",
+        "condition1Threshold": 0,
+        "condition2Enabled": false,
+        "outputTrue": "",
+        "outputFalse": "",
+        "debounce": 0,
+        "x": 160,
+        "y": 540,
+        "wires": [
+            [
+                "chg_dc"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "421dec9d1c2e0f76",
+        "type": "victron-input-vebus",
+        "z": "94965d902f34224f",
+        "service": "com.victronenergy.vebus/275",
+        "path": "/Ac/ActiveIn/L1/P",
+        "serviceObj": {
+            "service": "com.victronenergy.vebus/275",
+            "name": "MultiPlus-II 48/3000/35-32",
+            "communityTag": "vebus"
+        },
+        "pathObj": {
+            "path": "/Ac/ActiveIn/L1/P",
+            "type": "float",
+            "name": "Input power phase 1 (W)"
+        },
+        "name": "",
+        "onlyChanges": true,
+        "roundValues": "2",
+        "rateLimit": "0",
+        "outputs": 2,
+        "conditionalMode": true,
+        "condition1Operator": ">=",
+        "condition1Threshold": 0,
+        "condition2Enabled": false,
+        "outputTrue": "true",
+        "outputFalse": "false",
+        "debounce": 2000,
+        "x": 200,
+        "y": 480,
+        "wires": [
+            [
+                "chg_ac_in"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "721ad1572c6b983e",
+        "type": "victron-input-vebus",
+        "z": "94965d902f34224f",
+        "service": "com.victronenergy.vebus/275",
+        "path": "/Ac/Out/L1/P",
+        "serviceObj": {
+            "service": "com.victronenergy.vebus/275",
+            "name": "MultiPlus-II 48/3000/35-32",
+            "communityTag": "vebus"
+        },
+        "pathObj": {
+            "path": "/Ac/Out/L1/P",
+            "type": "float",
+            "name": "Output power phase L1 (W)"
+        },
+        "name": "",
+        "onlyChanges": true,
+        "roundValues": "2",
+        "rateLimit": "0",
+        "outputs": 2,
+        "conditionalMode": true,
+        "condition1Operator": ">=",
+        "condition1Threshold": 0,
+        "condition2Enabled": false,
+        "outputTrue": "true",
+        "outputFalse": "false",
+        "debounce": 2000,
+        "x": 200,
+        "y": 420,
+        "wires": [
+            [
+                "chg_ac_out"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "chg_ac_in",
+        "type": "change",
+        "z": "94965d902f34224f",
+        "name": "set topic=acPowerIn",
+        "rules": [
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "acPowerIn",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 420,
+        "y": 480,
+        "wires": [
+            [
+                "calc_kpd"
+            ]
+        ]
+    },
+    {
+        "id": "chg_ac_out",
+        "type": "change",
+        "z": "94965d902f34224f",
+        "name": "set topic=acPowerOut",
+        "rules": [
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "acPowerOut",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 430,
+        "y": 420,
+        "wires": [
+            [
+                "calc_kpd",
+                "prepare_power"
+            ]
+        ]
+    },
+    {
+        "id": "chg_dc",
+        "type": "change",
+        "z": "94965d902f34224f",
+        "name": "set topic=dcPower",
+        "rules": [
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "dcPower",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 420,
+        "y": 540,
+        "wires": [
+            [
+                "calc_kpd"
+            ]
+        ]
+    },
+    {
+        "id": "calc_kpd",
+        "type": "function",
+        "z": "94965d902f34224f",
+        "name": "КПД (robust)",
+        "func": "// Robust KPI calculation, uses flow context to store latest inputs\nconst topic = (msg.topic || '').toString().trim();\nconst payload = Number(msg.payload);\nif (!Number.isFinite(payload)) return null;\n\n// Update flow-stored inputs (only accept non-negative for certain topics as before)\nif (topic === 'acPowerIn') {\n    if (payload >= 0) flow.set('acPowerIn', payload);\n} else if (topic === 'acPowerOut') {\n    if (payload >= 0) flow.set('acPowerOut', payload);\n} else if (topic === 'dcPower') {\n    flow.set('dcPower', payload);\n} else {\n    return null; // unknown topic\n}\n\nconst acPowerIn  = Number(flow.get('acPowerIn') ?? 0);\nconst acPowerOut = Number(flow.get('acPowerOut') ?? 0);\nconst dcPower    = Number(flow.get('dcPower') ?? 0);\n\n// safety\nconst eps = 1e-6;\nlet losses = acPowerIn - acPowerOut - dcPower;\nif (!Number.isFinite(losses)) losses = 0;\nif (losses < 0) losses = 0;\n\nconst power2 = Math.max(0, acPowerIn - dcPower);\n\nif (acPowerIn <= eps) {\n    node.status({fill:\"grey\",shape:\"ring\",text:\"no AC input\"});\n    return null; // nothing meaningful to compute\n}\n\nlet kpd;\nif (dcPower >= 0) {\n    kpd = 100 - (losses * 100) / acPowerIn;\n} else {\n    const denom = power2 > eps ? power2 : acPowerIn;\n    kpd = 100 - (losses * 100) / denom;\n}\nif (!Number.isFinite(kpd)) return null;\nkpd = Math.round(kpd * 100) / 100; // 2 decimals\n\n// drop unrealistic values\nif (kpd >= 100 || kpd < -50) {\n    node.status({fill:\"yellow\",shape:\"dot\",text:`out-of-range ${kpd}%`});\n    return null;\n}\n\n// suppress small changes (threshold 0.1%)\nconst last = flow.get('lastKpd');\nif (last !== undefined && Math.abs(last - kpd) < 0.1) {\n    node.status({fill:\"blue\",shape:\"dot\",text:`КПД: ${kpd}% (no change)`});\n    return null;\n}\nflow.set('lastKpd', kpd);\n\n// Build outgoing message for Shelly: set shellyId and numeric payload\nmsg.shellyId = 201; // Shelly Number component for inverter KPD\nmsg.payload = kpd;\nnode.status({fill:\"blue\",shape:\"dot\",text:`КПД: ${kpd}% (${Math.round(-losses)}W)`});\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 640,
+        "y": 480,
+        "wires": [
+            [
+                "shelly_prep"
+            ]
+        ]
+    },
+    {
+        "id": "prepare_power",
+        "type": "function",
+        "z": "94965d902f34224f",
+        "name": "VC 202 – Inverter Power (prepare)",
+        "func": "// Prepare numeric payload and shellyId for inverter power (id=202)\nconst value = Number(msg.payload);\nif (!Number.isFinite(value)) return null;\nmsg.shellyId = 202;\nmsg.payload = value;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 690,
+        "y": 420,
+        "wires": [
+            [
+                "shelly_prep"
+            ]
+        ]
+    },
+    {
+        "id": "24b0cb47f9786715",
+        "type": "victron-input-battery",
+        "z": "94965d902f34224f",
+        "service": "com.victronenergy.battery/100",
+        "path": "/Soc",
+        "serviceObj": {
+            "service": "com.victronenergy.battery/100",
+            "name": "ESS Virtual Battery",
+            "communityTag": "battery"
+        },
+        "pathObj": {
+            "path": "/Soc",
+            "type": "float",
+            "name": "State of charge (%)"
+        },
+        "name": "Battery SOC",
+        "onlyChanges": false,
+        "roundValues": "2",
+        "rateLimit": "0",
+        "outputs": 1,
+        "conditionalMode": false,
+        "outputTrue": "",
+        "outputFalse": "",
+        "debounce": "2000",
+        "x": 640,
+        "y": 560,
+        "wires": [
+            [
+                "chg_soc"
+            ]
+        ]
+    },
+    {
+        "id": "chg_soc",
+        "type": "change",
+        "z": "94965d902f34224f",
+        "name": "set shellyId=200 (SOC)",
+        "rules": [
+            {
+                "t": "set",
+                "p": "shellyId",
+                "pt": "msg",
+                "to": "200",
+                "tot": "num"
+            },
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 860,
+        "y": 560,
+        "wires": [
+            [
+                "shelly_prep"
+            ]
+        ]
+    },
+    {
+        "id": "shelly_prep",
+        "type": "function",
+        "z": "94965d902f34224f",
+        "name": "Shelly Number.Set – prepare + dedup",
+        "func": "// Generic Shelly Number.Set prep with per-id dedup thresholds\nconst id = Number(msg.shellyId ?? (msg.payload && msg.payload.id));\nlet value = (typeof msg.payload === 'object' && msg.payload !== null && msg.payload.value !== undefined)\n            ? Number(msg.payload.value)\n            : Number(msg.payload);\nif (!Number.isFinite(id) || !Number.isFinite(value)) return null;\n\n// per-id epsilon (tunable)\nlet eps = 0.5; // default 0.5 units\nif (id === 201) eps = 0.1; // KPD: small threshold (percent)\nif (id === 202) eps = 1;   // Power: 1 W threshold\nif (id === 200) eps = 0.2; // SOC: 0.2%\n\nconst lastKey = 'shelly_last_' + id;\nconst last = flow.get(lastKey);\nif (last !== undefined && Math.abs(last - value) < eps) {\n    node.status({fill:\"grey\",shape:\"ring\",text:`id ${id} no-change ${value}`});\n    return null; // suppress small/no change\n}\nflow.set(lastKey, value);\n\nmsg.payload = { id: id, value: value };\nmsg.headers = { 'Content-Type': 'application/json' };\nnode.status({fill:\"green\",shape:\"dot\",text:`id ${id} → ${value}`});\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 1000,
+        "y": 480,
+        "wires": [
+            [
+                "delay_shelly"
+            ]
+        ]
+    },
+    {
+        "id": "delay_shelly",
+        "type": "delay",
+        "z": "94965d902f34224f",
+        "name": "rate-limit Shelly (1 msg / 5s, drop excess)",
+        "pauseType": "rate",
+        "timeout": "5",
+        "timeoutUnits": "seconds",
+        "rate": "1",
+        "nbRateUnits": "5",
+        "rateUnits": "second",
+        "randomFirst": "1",
+        "randomLast": "5",
+        "randomUnits": "seconds",
+        "drop": true,
+        "allowrate": false,
+        "outputs": 1,
+        "x": 1240,
+        "y": 480,
+        "wires": [
+            [
+                "5ecd9a0d9ce2e8e0"
+            ]
+        ]
+    },
+    {
+        "id": "5ecd9a0d9ce2e8e0",
+        "type": "http request",
+        "z": "94965d902f34224f",
+        "name": "Number.Set → Shelly",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://192.168.50.47/rpc/Number.Set",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 1500,
+        "y": 480,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "a1d05d9b9e8e8770",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "@victronenergy/node-red-contrib-victron": "1.6.64"
+        }
+    }
+]
