@@ -1,0 +1,291 @@
+[
+  {
+    "id": "d9d8e679810906eb",
+    "type": "tab",
+    "label": "Multi-device Priority Logic",
+    "disabled": false,
+    "info": "Node-RED flow: multi-device priority logic for Victron+Shelly devices.\nDevices: S0(50), S1(51), O1(65), S3(57).\nFirst import into Node-RED (Menu → Import → Clipboard)."
+  },
+  {
+    "id": "init_devices_inject",
+    "type": "inject",
+    "z": "d9d8e679810906eb",
+    "name": "Init devices (once)",
+    "props": [
+      { "p": "payload" }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "0.5",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 180,
+    "y": 80,
+    "wires": [
+      [ "init_devices_func" ]
+    ]
+  },
+  {
+    "id": "init_devices_func",
+    "type": "function",
+    "z": "d9d8e679810906eb",
+    "name": "Init flow.devices & defaults",
+    "func": "// Initialize devices list and default per-device flow variables\n// Devices configured here (id == DeviceInstance):\n// S0 (50) - S0-Зарядка на кухні\n// S1 (51) - S1-Зарядка Коридор\n// O1 (65) - O1-Зарядка Балкон\n// S3 (57) - S3-Зарядка спальня\n\nconst devices = [
+  { id: 50, name: 'S0', tag: 'S0-Зарядка на кухні' },
+  { id: 51, name: 'S1', tag: 'S1-Зарядка Коридор' },
+  { id: 65, name: 'O1', tag: 'O1-Зарядка Балкон' },
+  { id: 57, name: 'S3', tag: 'S3-Зарядка спальня' }
+];
+
+flow.set('devices', devices);
+
+// Set sane defaults for per-device variables (only if not already set)
+devices.forEach(d => {
+  if (flow.get('state_' + d.id) === undefined) flow.set('state_' + d.id, 0);
+  if (flow.get('s_mode_' + d.id) === undefined) flow.set('s_mode_' + d.id, 1); // auto enabled
+  if (flow.get('power_' + d.id) === undefined) flow.set('power_' + d.id, 0);
+  if (flow.get('voltage_' + d.id) === undefined) flow.set('voltage_' + d.id, 230);
+});
+
+// global defaults used by priority logic
+if (context.get('ess_state') === undefined) context.set('ess_state', global.get('ess_state') || -1);
+
+return null;",
+    "outputs": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 440,
+    "y": 80,
+    "wires": []
+  },
+  {
+    "id": "priority_logic_func",
+    "type": "function",
+    "z": "d9d8e679810906eb",
+    "name": "Priority Logic (multi-device)",
+    "func": "// Multi-device priority logic\n// Returns N outputs (one per device) + last output for Telegram messages\n\n// --- 0. Kyiv time ---\nconst kyivTime = new Date().toLocaleString(\"en-US\", {timeZone: \"Europe/Kyiv\", hourCycle: \"h23\"});\nconst d = new Date(kyivTime);\nconst hours = d.getHours();\nconst minutes = d.getMinutes();\nconst totalMinutes = hours * 60 + minutes;\n\n// schedule bounds\nconst s_start_h = 23;\nconst s_start_m = 10;\nconst s_end_h = 6;\nconst s_end_m = 50;\n\n// ESS modes\nconst ess_state = context.get('ess_state') ?? global.get('ess_state');\nconst essMode9 = 9;\nconst essMode10 = 10;\n\nconst i_mode = global.get('mode'); // 1-Charger,2-Inverter,3-On,4-Off\nconst inputAvailable = (global.get('input') === 0); // true if grid present\n\n// get devices\nconst devices = flow.get('devices') || [];
+// Ensure function outputs count matches devices.length + 1
+// Node-RED will ignore extra elements when returned, but it's good practice.
+
+let telegramMsgs = [];
+let outputs = [];
+
+devices.forEach(dev => {
+  const stateKey = 'state_' + dev.id;
+  const sModeKey = 's_mode_' + dev.id;
+  const deviceState = flow.get(stateKey) !== undefined ? flow.get(stateKey) : flow.get('s_state');
+  const deviceAutoMode = flow.get(sModeKey) !== undefined ? flow.get(sModeKey) : flow.get('s_mode');
+  const stateBool = (deviceState === 1);
+  const s_mode_enabled = !!deviceAutoMode;
+
+  const allow = (ess_state === essMode9) ||
+                (totalMinutes >= s_start_h*60 + s_start_m && totalMinutes <= 24*60) ||
+                (totalMinutes <= s_end_h*60 + s_end_m && totalMinutes >= 0);
+
+  const allowState = ((i_mode == 3) && inputAvailable && allow);
+
+  let cmdMsg = null;
+  if (s_mode_enabled && stateBool !== allowState) {
+    cmdMsg = { payload: (allowState ? 1 : 0) };
+    // metadata
+    cmdMsg.deviceId = dev.id;
+    cmdMsg.deviceName = dev.name;
+    cmdMsg.topic = `switch/${dev.id}`;
+
+    const mode_state = (i_mode==1)?"Charger":((i_mode==2)?"Inverter":((i_mode==3)?"ON":"OFF"));
+    const reason = `[${mode_state}] Grid [${inputAvailable ? '✅' : '❌'}] Charge [${allowState ? '✅' : '❌'}]`;
+    const statusText = (allowState ? "\n🟢" : "\n🔴") + dev.tag + " (" + dev.id + ") " + reason;
+    telegramMsgs.push({ payload: { chatId: 229352900, type: "message", content: statusText } });
+  }
+  outputs.push(cmdMsg);
+});
+
+// last output = telegram messages (array) or null
+outputs.push( telegramMsgs.length ? telegramMsgs : null );
+
+// update Node status (aggregate simple status)
+let anyOn = devices.some(d => flow.get('state_' + d.id) === 1);
+node.status({ fill: anyOn ? 'green' : 'red', shape: 'dot', text: `Devices: ${devices.length} - Any ON: ${anyOn}` });
+
+return outputs;",
+    "outputs": 5,
+    "noerr": 0,
+    "initialize": "// Set defaults used inside the function if needed\ncontext.set('ess_state', context.get('ess_state') || global.get('ess_state') || -1);",
+    "finalize": "",
+    "libs": [],
+    "x": 260,
+    "y": 220,
+    "wires": [
+      [ "victron_out_50" ],
+      [ "victron_out_51" ],
+      [ "victron_out_65" ],
+      [ "victron_out_57" ],
+      [ "telegram_sender" ]
+    ]
+  },
+  {
+    "id": "victron_out_50",
+    "type": "victron-output-switch",
+    "z": "d9d8e679810906eb",
+    "g": "",
+    "service": "com.victronenergy.acload/50",
+    "path": "/SwitchableOutput/0/State",
+    "serviceObj": {
+      "service": "com.victronenergy.acload/50",
+      "name": "Shelly 8CBFEAA0785C (S0)"
+    },
+    "pathObj": {
+      "path": "/SwitchableOutput/0/State",
+      "type": "enum",
+      "enum": { "0": "Off", "1": "On" },
+      "name": "0 state",
+      "mode": "both"
+    },
+    "name": "S0 output",
+    "onlyChanges": false,
+    "roundValues": "no",
+    "rateLimit": 0,
+    "outputs": 0,
+    "conditionalMode": false,
+    "x": 560,
+    "y": 120,
+    "wires": []
+  },
+  {
+    "id": "victron_out_51",
+    "type": "victron-output-switch",
+    "z": "d9d8e679810906eb",
+    "g": "",
+    "service": "com.victronenergy.acload/51",
+    "path": "/SwitchableOutput/0/State",
+    "serviceObj": {
+      "service": "com.victronenergy.acload/51",
+      "name": "80646FD620A0 (S1)"
+    },
+    "pathObj": {
+      "path": "/SwitchableOutput/0/State",
+      "type": "enum",
+      "enum": { "0": "Off", "1": "On" },
+      "name": "0 state",
+      "mode": "both"
+    },
+    "name": "S1 output",
+    "onlyChanges": false,
+    "roundValues": "no",
+    "rateLimit": 0,
+    "outputs": 0,
+    "conditionalMode": false,
+    "x": 560,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "victron_out_65",
+    "type": "victron-output-switch",
+    "z": "d9d8e679810906eb",
+    "g": "",
+    "service": "com.victronenergy.acload/65",
+    "path": "/SwitchableOutput/0/State",
+    "serviceObj": {
+      "service": "com.victronenergy.acload/65",
+      "name": "089272487384 (O1)"
+    },
+    "pathObj": {
+      "path": "/SwitchableOutput/0/State",
+      "type": "enum",
+      "enum": { "0": "Off", "1": "On" },
+      "name": "0 state",
+      "mode": "both"
+    },
+    "name": "O1 output",
+    "onlyChanges": false,
+    "roundValues": "no",
+    "rateLimit": 0,
+    "outputs": 0,
+    "conditionalMode": false,
+    "x": 560,
+    "y": 200,
+    "wires": []
+  },
+  {
+    "id": "victron_out_57",
+    "type": "victron-output-switch",
+    "z": "d9d8e679810906eb",
+    "g": "",
+    "service": "com.victronenergy.acload/57",
+    "path": "/SwitchableOutput/0/State",
+    "serviceObj": {
+      "service": "com.victronenergy.acload/57",
+      "name": "B48A0A1CCB68 (S3)"
+    },
+    "pathObj": {
+      "path": "/SwitchableOutput/0/State",
+      "type": "enum",
+      "enum": { "0": "Off", "1": "On" },
+      "name": "0 state",
+      "mode": "both"
+    },
+    "name": "S3 output",
+    "onlyChanges": false,
+    "roundValues": "no",
+    "rateLimit": 0,
+    "outputs": 0,
+    "conditionalMode": false,
+    "x": 560,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "telegram_sender",
+    "type": "telegram sender",
+    "z": "d9d8e679810906eb",
+    "name": "telegram sender",
+    "bot": "1ff823dbeac2b128",
+    "haserroroutput": false,
+    "outputs": 1,
+    "x": 560,
+    "y": 320,
+    "wires": []
+  },
+  {
+    "id": "1ff823dbeac2b128",
+    "type": "telegram bot",
+    "botname": "Telehram",
+    "usernames": "229352900",
+    "chatids": "",
+    "baseapiurl": "",
+    "testenvironment": false,
+    "updatemode": "polling",
+    "pollinterval": 300,
+    "usesocks": false,
+    "sockshost": "",
+    "socksprotocol": "socks5",
+    "socksport": 6667,
+    "socksusername": "anonymous",
+    "sockspassword": "",
+    "bothost": "",
+    "botpath": "",
+    "localbothost": "0.0.0.0",
+    "localbotport": 8443,
+    "publicbotport": 8443,
+    "privatekey": "",
+    "certificate": "",
+    "useselfsignedcertificate": false,
+    "sslterminated": false,
+    "verboselogging": true
+  },
+  {
+    "id": "note_readme",
+    "type": "comment",
+    "z": "d9d8e679810906eb",
+    "name": "Notes:\n- Function node outputs = devices.length + 1.\n- Per-device flow variables: state_<id>, s_mode_<id>, power_<id>, voltage_<id>.\n- Init node sets defaults on first deploy.",
+    "info": "",
+    "x": 360,
+    "y": 360,
+    "wires": []
+  }
+]
